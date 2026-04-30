@@ -1,7 +1,6 @@
 # Physics GNN Surrogate · Long Rollout Stabilization
 
-<!-- GitHub 公開後: OWNER/REPO を実リポジトリ（例: myorg/physics-gnn-surrogate-long-rollout）に置き換えてください -->
-[![CI](https://github.com/OWNER/REPO/actions/workflows/ci.yml/badge.svg)](https://github.com/OWNER/REPO/actions/workflows/ci.yml)
+[![CI](https://github.com/kohmaruworks/physics-gnn-surrogate-long-rollout/actions/workflows/ci.yml/badge.svg)](https://github.com/kohmaruworks/physics-gnn-surrogate-long-rollout/actions/workflows/ci.yml)
 [![Julia](https://img.shields.io/badge/Julia-Project-9558B2?style=for-the-badge&logo=julia&logoColor=white)](https://julialang.org/)
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch Geometric](https://img.shields.io/badge/PyTorch%20Geometric-GNN-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch-geometric.readthedocs.io/)
@@ -18,8 +17,8 @@ Julia で参照データ・グラフ IR を生成し、Python（PyG）で **Heun
 以下は **Step 1（単一格子・波動）** をローカルで一通り動かす最小手順です。GPU がなくても `--cpu` で実行できます。
 
 ```bash
-# 1. リポジトリ取得（※ OWNER はご自身の GitHub ユーザーまたは組織名に置き換え）
-git clone https://github.com/OWNER/physics-gnn-surrogate-long-rollout.git
+# 1. リポジトリ取得
+git clone https://github.com/kohmaruworks/physics-gnn-surrogate-long-rollout.git
 cd physics-gnn-surrogate-long-rollout
 
 # 2. Julia：依存固定と参照軌道 JSON の生成
