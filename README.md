@@ -282,6 +282,7 @@ python evaluation/eval_pipeline.py \
 ## GitHub への push について
 
 - **`data/interim/*` は .gitignore**（巨大・再現可能な成果物のため）。サンプル JSON をリポジトリに含めたい場合は README にその旨を書き、`git add -f` 等で明示的に追加してください。
+- **`articles/` と `youtube_scripts/` は .gitignore** 済みです（連載・動画向けの下書きをローカルにだけ置く想定）。リモートには含まれません。
 - **`Manifest.toml`**: `julia --project=. -e 'using Pkg; Pkg.instantiate()'` で生成されます。**`physics-gnn-surrogate-basic` など姉妹環境と同様、依存固定のためリポジトリにコミットする運用**を推奨します。
 
 ---
