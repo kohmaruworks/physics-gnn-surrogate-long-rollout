@@ -1,0 +1,7 @@
+# アプリケーション環境（physics-gnn-surrogate-basic と同様）。
+# name/uuid を付けると Julia が「パッケージ」とみなし src/ が無いと precompile が失敗します。
+
+[deps]
+DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+Metis = "2679e427-3c69-5b7f-982b-ece356f1e94b"

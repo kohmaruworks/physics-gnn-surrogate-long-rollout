@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "physics_gnn_wave_rollout_step1_v1",
+  "title": "2D wave equation graph surrogate — Julia/Python interchange",
+  "description": "Intermediate representation for homogeneous grid graphs and Hamiltonian wave dynamics. Edge endpoints use Julia 1-based vertex IDs; Python loaders MUST apply convert_julia_to_python_indices.",
+  "type": "object",
+  "required": [
+    "schema",
+    "indexing",
+    "meta",
+    "num_nodes",
+    "edges",
+    "timeseries"
+  ],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "physics_gnn_wave_rollout_step1_v1"
+    },
+    "indexing": {
+      "type": "object",
+      "required": ["edges"],
+      "properties": {
+        "edges": {
+          "type": "string",
+          "const": "julia_1_based",
+          "description": "Each edge is [src, tgt] with vertices in 1..num_nodes (Julia convention)."
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["nx", "ny", "dt", "c", "dx", "num_steps", "description"],
+      "properties": {
+        "nx": { "type": "integer", "minimum": 2 },
+        "ny": { "type": "integer", "minimum": 2 },
+        "dt": { "type": "number", "exclusiveMinimum": 0 },
+        "c": { "type": "number", "exclusiveMinimum": 0 },
+        "dx": { "type": "number", "exclusiveMinimum": 0 },
+        "num_steps": { "type": "integer", "minimum": 2 },
+        "description": { "type": "string" }
+      }
+    },
+    "num_nodes": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "N = nx * ny grid nodes, linearized row-major (x fast)."
+    },
+    "edges": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "integer", "minimum": 1 }
+      },
+      "description": "Directed edges for 4-neighbor stencil; endpoints are 1-based."
+    },
+    "node_positions": {
+      "type": "array",
+      "items": {
+        "type": "array",
+        "minItems": 2,
+        "maxItems": 2,
+        "items": { "type": "number" }
+      },
+      "description": "Optional [x, y] per node in the same order as state indices."
+    },
+    "timeseries": {
+      "type": "object",
+      "required": ["u", "v"],
+      "properties": {
+        "u": {
+          "type": "array",
+          "description": "Displacement u_i(t); outer index time, inner index node (1..N)."
+        },
+        "v": {
+          "type": "array",
+          "description": "Velocity v_i = du_i/dt; same layout as u."
+        }
+      }
+    }
+  }
+}

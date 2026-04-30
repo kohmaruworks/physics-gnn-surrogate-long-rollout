@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "physics_gnn_multigrid_v1",
+  "title": "Two-level grid + Restriction/Prolongation (COO)",
+  "description": "Fine/coarse graph topology and sparse R (coarse←fine), P (fine←coarse). All COO indices are Julia 1-based; Python converts with convert_julia_sparse_coo_to_torch.",
+  "type": "object",
+  "required": ["schema", "indexing", "meta", "fine_graph", "coarse_graph", "restriction", "prolongation", "timeseries"],
+  "properties": {
+    "schema": { "type": "string", "const": "physics_gnn_multigrid_v1" },
+    "indexing": {
+      "type": "object",
+      "properties": {
+        "edges": { "type": "string", "const": "julia_1_based" },
+        "sparse_coo": { "type": "string", "const": "julia_1_based_rows_cols" }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["nf_x", "nf_y", "nc_x", "nc_y", "dt", "c", "dx", "num_steps"],
+      "properties": {
+        "nf_x": { "type": "integer", "minimum": 2 },
+        "nf_y": { "type": "integer", "minimum": 2 },
+        "nc_x": { "type": "integer", "minimum": 1 },
+        "nc_y": { "type": "integer", "minimum": 1 },
+        "dt": { "type": "number", "exclusiveMinimum": 0 },
+        "c": { "type": "number", "exclusiveMinimum": 0 },
+        "dx": { "type": "number", "exclusiveMinimum": 0 },
+        "num_steps": { "type": "integer", "minimum": 2 },
+        "description": { "type": "string" }
+      }
+    },
+    "fine_graph": {
+      "type": "object",
+      "required": ["num_nodes", "edges"],
+      "properties": {
+        "num_nodes": { "type": "integer", "minimum": 1 },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "coarse_graph": {
+      "type": "object",
+      "required": ["num_nodes", "edges"],
+      "properties": {
+        "num_nodes": { "type": "integer", "minimum": 1 },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "restriction": {
+      "type": "object",
+      "required": ["nrows", "ncols", "rows", "cols", "values"],
+      "properties": {
+        "nrows": { "type": "integer", "minimum": 1 },
+        "ncols": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "cols": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "values": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "prolongation": {
+      "type": "object",
+      "required": ["nrows", "ncols", "rows", "cols", "values"],
+      "properties": {
+        "nrows": { "type": "integer", "minimum": 1 },
+        "ncols": { "type": "integer", "minimum": 1 },
+        "rows": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "cols": { "type": "array", "items": { "type": "integer", "minimum": 1 } },
+        "values": { "type": "array", "items": { "type": "number" } }
+      }
+    },
+    "timeseries": {
+      "type": "object",
+      "required": ["u", "v"],
+      "properties": {
+        "u": { "type": "array" },
+        "v": { "type": "array" }
+      }
+    }
+  }
+}

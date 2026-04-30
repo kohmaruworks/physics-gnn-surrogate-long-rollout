@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "physics_gnn_eval_v1",
+  "title": "Zero-shot evaluation wave dataset + Julia timing metadata",
+  "description": "Fine (and optional 2:1 coarse + R/P) grid for eval; Julia 1-based edges and sparse COO; meta contains solver wall-clock ROI inputs.",
+  "type": "object",
+  "required": ["schema", "meta", "fine_graph", "timeseries"],
+  "properties": {
+    "schema": { "type": "string", "const": "physics_gnn_eval_v1" },
+    "meta": {
+      "type": "object",
+      "required": [
+        "nf_x",
+        "nf_y",
+        "dt",
+        "c",
+        "dx",
+        "num_macro_steps",
+        "julia_total_solve_seconds",
+        "julia_seconds_per_macro_step"
+      ],
+      "properties": {
+        "nf_x": { "type": "integer", "minimum": 2 },
+        "nf_y": { "type": "integer", "minimum": 2 },
+        "nc_x": { "type": "integer" },
+        "nc_y": { "type": "integer" },
+        "dt": { "type": "number", "exclusiveMinimum": 0 },
+        "c": { "type": "number", "exclusiveMinimum": 0 },
+        "dx": { "type": "number", "exclusiveMinimum": 0 },
+        "num_macro_steps": { "type": "integer", "minimum": 2 },
+        "julia_total_solve_seconds": { "type": "number", "minimum": 0 },
+        "julia_seconds_per_macro_step": { "type": "number", "minimum": 0 },
+        "description": { "type": "string" }
+      }
+    },
+    "fine_graph": {
+      "type": "object",
+      "required": ["num_nodes", "edges"],
+      "properties": {
+        "num_nodes": { "type": "integer", "minimum": 1 },
+        "edges": {
+          "type": "array",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "coarse_graph": { "type": "object" },
+    "restriction": { "type": "object" },
+    "prolongation": { "type": "object" },
+    "timeseries": {
+      "type": "object",
+      "required": ["u", "v"],
+      "properties": {
+        "u": { "type": "array" },
+        "v": { "type": "array" }
+      }
+    }
+  }
+}

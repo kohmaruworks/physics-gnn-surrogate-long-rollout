@@ -1,0 +1,130 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "physics_gnn_wave_rollout_ddm_v1",
+  "title": "DDM partitioned wave surrogate — Julia/Python interchange",
+  "description": "Metis-partitioned subdomains with 1-hop halo (ghost) nodes. All vertex IDs and local indices are Julia 1-based in JSON; Python must convert with index_converter utilities.",
+  "type": "object",
+  "required": ["schema", "indexing", "meta", "global", "subdomains", "timeseries"],
+  "properties": {
+    "schema": {
+      "type": "string",
+      "const": "physics_gnn_wave_rollout_ddm_v1"
+    },
+    "indexing": {
+      "type": "object",
+      "required": ["edges_local", "global_node_ids", "local_indices"],
+      "properties": {
+        "edges_local": {
+          "type": "string",
+          "const": "julia_1_based_within_extended_patch"
+        },
+        "global_node_ids": {
+          "type": "string",
+          "const": "julia_1_based"
+        },
+        "local_indices": {
+          "type": "string",
+          "const": "julia_1_based_per_subdomain_node_list"
+        }
+      }
+    },
+    "meta": {
+      "type": "object",
+      "required": ["nx", "ny", "dt", "c", "dx", "num_steps", "num_parts", "description"],
+      "properties": {
+        "nx": { "type": "integer", "minimum": 2 },
+        "ny": { "type": "integer", "minimum": 2 },
+        "dt": { "type": "number", "exclusiveMinimum": 0 },
+        "c": { "type": "number", "exclusiveMinimum": 0 },
+        "dx": { "type": "number", "exclusiveMinimum": 0 },
+        "num_steps": { "type": "integer", "minimum": 2 },
+        "num_parts": { "type": "integer", "minimum": 2 },
+        "description": { "type": "string" }
+      }
+    },
+    "global": {
+      "type": "object",
+      "required": ["num_nodes"],
+      "properties": {
+        "num_nodes": { "type": "integer", "minimum": 1 },
+        "edges": {
+          "type": "array",
+          "description": "Optional full-graph directed edges (Julia 1-based), same convention as Step 1.",
+          "items": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 2,
+            "items": { "type": "integer", "minimum": 1 }
+          }
+        }
+      }
+    },
+    "subdomains": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": ["subdomain_id", "num_local_nodes", "nodes", "edges_local"],
+        "properties": {
+          "subdomain_id": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Partition id from Metis (Julia 1..K)."
+          },
+          "num_local_nodes": { "type": "integer", "minimum": 1 },
+          "nodes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["global_id", "local_id", "is_ghost"],
+              "properties": {
+                "global_id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Global grid vertex id (1-based)."
+                },
+                "local_id": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "description": "Index within this subdomain extended patch V'_i (1-based)."
+                },
+                "is_ghost": {
+                  "type": "boolean",
+                  "description": "True if vertex belongs to halo (not in Metis core of this part)."
+                },
+                "owner_subdomain": {
+                  "type": ["integer", "null"],
+                  "minimum": 1,
+                  "description": "For ghosts: Metis part id where this vertex is a core node (1-based); null for core."
+                }
+              }
+            }
+          },
+          "edges_local": {
+            "type": "array",
+            "description": "Directed edges inside V'_i; endpoints are local_id (1-based).",
+            "items": {
+              "type": "array",
+              "minItems": 2,
+              "maxItems": 2,
+              "items": { "type": "integer", "minimum": 1 }
+            }
+          }
+        }
+      }
+    },
+    "timeseries": {
+      "type": "object",
+      "required": ["u", "v"],
+      "properties": {
+        "u": {
+          "type": "array",
+          "description": "Global trajectory: time × global node (1..N)."
+        },
+        "v": {
+          "type": "array"
+        }
+      }
+    }
+  }
+}

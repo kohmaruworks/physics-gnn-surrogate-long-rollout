@@ -1,0 +1,62 @@
+# データ・学習成果物（再現は README の手順から）
+data/interim/*
+!data/interim/.gitkeep
+
+# 生成データ・重み（リポジトリ配下のどこにあっても除外）
+*.pth
+*.pt
+*.ckpt
+*.safetensors
+*.h5
+*.hdf5
+
+# Step 4 evaluation artifacts（ディレクトリのみ追跡）
+reports/*
+!reports/.gitkeep
+
+# バックアップ・一時
+*.json~
+*.tmp
+*.log
+*.bak
+
+# --- シークレット・認証 ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*credentials*.json
+secrets/
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+*.egg-info/
+.eggs/
+dist/
+build/
+*.egg
+.ipynb_checkpoints/
+
+# --- Julia ---
+*.jl.cov
+*.jl.*.mem
+
+# --- OS・エディタ ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*~
+.cursor/
