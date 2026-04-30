@@ -2,6 +2,9 @@
 # generate_eval_data.jl — Zero-shot style eval mesh (non-square, asymmetric IC) + wave GT + wall-clock timing for ROI baseline.
 # Schema: physics_gnn_eval_v1. Indices Julia 1-based. Optional 2:1 multigrid operators when nf_x, nf_y even.
 
+import Pkg
+Pkg.activate(dirname(@__DIR__))
+
 using JSON3
 using DifferentialEquations
 using LinearAlgebra

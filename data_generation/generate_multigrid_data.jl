@@ -2,6 +2,9 @@
 # generate_multigrid_data.jl — Fine/coarse 2:1 tensor-product grids, Galerkin-style R and piecewise-constant P (COO, Julia 1-based).
 # Reference trajectory on the fine grid only (wave equation). Schema: physics_gnn_multigrid_v1.
 
+import Pkg
+Pkg.activate(dirname(@__DIR__))
+
 using JSON3
 using DifferentialEquations
 using LinearAlgebra

@@ -2,6 +2,9 @@
 # generate_large_wave_data.jl — Higher-res grid wave + Metis domain decomposition + halo patches (DDM).
 # Outputs physics_gnn_wave_rollout_ddm_v1 JSON; indices Julia 1-based.
 
+import Pkg
+Pkg.activate(dirname(@__DIR__))
+
 using JSON3
 using DifferentialEquations
 using LinearAlgebra

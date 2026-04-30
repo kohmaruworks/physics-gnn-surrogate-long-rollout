@@ -19,6 +19,8 @@ jobs:
     env:
       # Recommended while Actions migrate JavaScript actions off Node 20 runners.
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      # Ensure Julia loads repo-root Project.toml/Manifest.toml for all `julia` invocations.
+      JULIA_PROJECT: ${{ github.workspace }}
 
     steps:
       - name: Checkout
@@ -28,13 +30,13 @@ jobs:
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: "1.12"
+          version: "1.12.6"
 
       - name: Julia instantiate
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
 
       - name: Generate Step 1 wave JSON (Julia)
-        run: julia --project=. data_generation/generate_wave_data.jl
+        run: julia --project=. "${GITHUB_WORKSPACE}/data_generation/generate_wave_data.jl"
 
       - name: Setup Python
         uses: actions/setup-python@v5

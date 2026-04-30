@@ -2,6 +2,9 @@
 # generate_wave_data.jl — 2D discrete wave (Hamiltonian) + JSON export per schema.
 # Edge indices are Julia 1-based; Python uses convert_julia_to_python_indices.
 
+import Pkg
+Pkg.activate(dirname(@__DIR__))
+
 using JSON3
 using DifferentialEquations
 using LinearAlgebra
