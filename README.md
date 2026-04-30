@@ -6,7 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch Geometric](https://img.shields.io/badge/PyTorch%20Geometric-GNN-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch-geometric.readthedocs.io/)
 
-大規模マルチフィジックスと自己回帰推論の安定化 — **ステップ 1–5**（Step 1: Heun + Symplectic、Step 2: Metis DDM + Halo、**Step 3: Multigrid + Tensor MP**、**Step 4: ゼロショット評価と ROI**、**Step 5: OSS 公開・CI・技術記事／動画向けドキュメント**）。  
+大規模マルチフィジックスと自己回帰推論の安定化 — **ステップ 1–5**（Step 1: Heun + Symplectic、Step 2: Metis DDM + Halo、**Step 3: Multigrid + Tensor MP**、**Step 4: ゼロショット評価と ROI**、**Step 5: OSS 公開・CI**）。  
 Julia で参照データ・グラフ IR を生成し、Python（PyG）で **Heun / Symplectic（Step 1）**、**DDM Halo（Step 2）**、**Multigrid + Tensor MP（Step 3）** を学習・合成し、**Step 4** で未知メッシュ上の自己回帰ロールアウト・エネルギー漂移・Julia 対比の高速化倍率を評価できます。
 
 開発フロー・依存の入れ方・ライセンス表記は、姉妹プロジェクト **`physics-gnn-surrogate-basic`** および **`physics-gnn-surrogate-act`** と揃えています（リポルートの `requirements.txt`、`python3 -m venv .venv` または `uv venv`、`julia --project=.` の `Pkg.instantiate()`、成果物は `data/interim/`、MIT License）。
@@ -87,10 +87,6 @@ $$
 ```text
 physics-gnn-surrogate-long-rollout/
 ├── .github/workflows/ci.yml       # GitHub Actions CI（Julia データ生成 → Python スモーク）
-├── articles/                      # Zenn 連載ドラフト（Markdown）
-│   └── rollout_stabilization_ddm.md
-├── youtube_scripts/               # YouTube「数理科学ノート」向け台本・構成案
-│   └── math_science_note_script.md
 ├── data_generation/
 │   ├── generate_wave_data.jl       # Step 1: 単一領域グリッド波動
 │   ├── schema.json
@@ -253,7 +249,7 @@ python evaluation/eval_pipeline.py \
 
 ---
 
-## ステップ 5: OSS 公開・CI・ドキュメント・動画台本
+## ステップ 5: OSS 公開・CI
 
 ### GitHub Actions（CI）
 
@@ -265,14 +261,6 @@ python evaluation/eval_pipeline.py \
 4. **`surrogate_model/train.py --epochs 2 --cpu`** によるスモーク学習
 
 ワークフロー定義: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
-
-### Zenn 記事ドラフト
-
-連載用の下書き Markdown は [`articles/rollout_stabilization_ddm.md`](articles/rollout_stabilization_ddm.md) にあります。[Zenn CLI](https://zenn.dev/zenn-community/articles/zenn-cli-guide) で投稿する場合は、本リポジトリとは別に Zenn の `articles/` にコピーするか、`published` フラグを編集して公開してください（ドラフトでは `published: false`）。
-
-### YouTube「数理科学ノート」向け台本
-
-スライド構成案とナレーションは [`youtube_scripts/math_science_note_script.md`](youtube_scripts/math_science_note_script.md) にあります。撮影・編集時にテロップ用 LaTeX をそのまま利用できます。
 
 ---
 

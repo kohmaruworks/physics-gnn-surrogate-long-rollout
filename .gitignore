@@ -14,6 +14,10 @@ data/interim/*
 reports/*
 !reports/.gitkeep
 
+# 連載・動画向けドキュメント（ローカル専用。リモートには含めない）
+articles/
+youtube_scripts/
+
 # バックアップ・一時
 *.json~
 *.tmp
