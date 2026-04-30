@@ -140,7 +140,7 @@ physics-gnn-surrogate-long-rollout/
 
 ### Julia（データ生成）
 
-Julia 1.9 以上を推奨。インストールは [juliaup](https://github.com/JuliaLang/juliaup) または公式バイナリ（補足ドキュメントが必要な場合は **`physics-gnn-surrogate-basic`** など姉妹リポジトリの `docs/` を参照）。
+Julia は **`Manifest.toml` に記載の `julia_version` と整合するバージョン**を推奨します（現状のロックファイルは **1.12** 系）。GitHub Actions の CI も同じマイナー系列で実行します。インストールは [juliaup](https://github.com/JuliaLang/juliaup) または公式バイナリ（補足ドキュメントが必要な場合は **`physics-gnn-surrogate-basic`** など姉妹リポジトリの `docs/` を参照）。
 
 ```bash
 cd physics-gnn-surrogate-long-rollout

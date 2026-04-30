@@ -16,15 +16,19 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      # Recommended while Actions migrate JavaScript actions off Node 20 runners.
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      # Manifest.toml declares julia_version (must match for reliable Pkg.instantiate).
       - name: Setup Julia
         uses: julia-actions/setup-julia@v2
         with:
-          version: "1.10"
+          version: "1.12"
 
       - name: Julia instantiate
         run: julia --project=. -e 'using Pkg; Pkg.instantiate()'
@@ -38,10 +42,15 @@ jobs:
           python-version: "3.11"
           cache: pip
 
-      - name: Install Python dependencies (CPU PyTorch)
+      - name: Install Python dependencies (CPU PyTorch + PyG binaries)
         run: |
-          python -m pip install --upgrade pip
+          python -m pip install --upgrade pip wheel setuptools
           pip install torch --index-url https://download.pytorch.org/whl/cpu
+          TORCH_VER="$(python -c 'import torch; print(torch.__version__)')"
+          echo "Torch version for PyG wheels: ${TORCH_VER}"
+          pip install pyg_lib torch_scatter torch_sparse torch_cluster torch_spline_conv \
+            -f "https://data.pyg.org/whl/torch-${TORCH_VER}.html" \
+            || echo "Optional PyG extension wheels not available for ${TORCH_VER}; relying on torch-geometric defaults."
           pip install "numpy>=1.24" "torch-geometric>=2.4.0"
 
       - name: Index conversion smoke test (Julia 1-based → PyG 0-based)
