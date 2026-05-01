@@ -20,7 +20,8 @@ reports/*
 articles/
 youtube_scripts/
 
-# Marp などで生成するスライド PDF（アセットは別管理）
+# Marp スライドソース・生成 PDF（別管理・アセットは zenn-articles 等）
+slides/*.md
 slides/*.pdf
 
 # バックアップ・一時
