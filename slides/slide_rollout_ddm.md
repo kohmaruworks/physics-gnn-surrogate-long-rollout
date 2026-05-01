@@ -77,28 +77,7 @@ $$
 
 ## 構成図（FastAPI とラウンドトリップ）
 
-```mermaid
-flowchart TB
-  subgraph J["Julia（1-based）：データ生成／参照ソルバ"]
-    JR[参照シミュレーション・IR 生成]
-    HC[HTTP.jl クライアント]
-  end
-  subgraph Wire["疎結合"]
-    JSON[JSON ペイロード]
-  end
-  subgraph API["Python API 層（FastAPI）"]
-    EP[エンドポイント]
-    IDX[インデックス変換\n1-based ↔ 0-based\nラウンドトリップ]
-  end
-  subgraph P["Python（0-based・AI 推論）"]
-    PT[PyTorch / PyG\nGNN 推論・評価]
-  end
-  JR --> HC
-  HC <-->|HTTP| JSON
-  JSON <--> EP
-  EP <--> IDX
-  IDX <--> PT
-```
+![w:900](../../zenn-articles/images/physics-gnn-rollout-fastapi-architecture.png)
 
 ペイロードに含まれる **ノード ID・エッジ番号・スパース COO** が、離散モデル側と張量側で **ずれずに往復できる**状態を、この境界で明示的につくるわけです。
 
@@ -110,7 +89,7 @@ flowchart TB
 
 累積誤差は \(\text{RMSE}_{rollout}\) で縮約しつつ、ハミルトニアン様のドリフトも追い、離散モデルステップとの **Speedup／ROI** も整理できる、という流れになりますね。
 
-![bg right:40% 80%](/images/rollout_comparison.gif)
+![bg right:40% 80%](../../zenn-articles/images/rollout_comparison.gif)
 
 ---
 

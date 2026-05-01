@@ -20,6 +20,9 @@ reports/*
 articles/
 youtube_scripts/
 
+# Marp などで生成するスライド PDF（アセットは別管理）
+slides/*.pdf
+
 # バックアップ・一時
 *.json~
 *.tmp
