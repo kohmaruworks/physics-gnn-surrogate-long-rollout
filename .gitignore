@@ -14,7 +14,9 @@ data/interim/*
 reports/*
 !reports/.gitkeep
 
-# 連載・動画向けドキュメント（ローカル専用。リモートには含めない）
+# ---------------------------------------------------------------------------
+# Content authoring & internal pipelines (never commit / never push)
+# ---------------------------------------------------------------------------
 articles/
 youtube_scripts/
 

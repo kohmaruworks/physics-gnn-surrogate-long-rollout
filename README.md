@@ -5,233 +5,112 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![PyTorch Geometric](https://img.shields.io/badge/PyTorch%20Geometric-GNN-EE4C2C?style=for-the-badge&logo=pytorch&logoColor=white)](https://pytorch-geometric.readthedocs.io/)
 
-大規模マルチフィジックスと自己回帰推論の安定化 — **ステップ 1–5**（Step 1: Heun + Symplectic、Step 2: Metis DDM + Halo、**Step 3: Multigrid + Tensor MP**、**Step 4: ゼロショット評価と ROI**、**Step 5: OSS 公開・CI**）。  
-Julia で参照データ・グラフ IR を生成し、Python（PyG）で **Heun / Symplectic（Step 1）**、**DDM Halo（Step 2）**、**Multigrid + Tensor MP（Step 3）** を学習・合成し、**Step 4** で未知メッシュ上の自己回帰ロールアウト・エネルギー漂移・Julia 対比の高速化倍率を評価できます。
+[🇺🇸 English](#english) | [🇯🇵 日本語](#japanese)
 
-開発フロー・依存の入れ方・ライセンス表記は、姉妹プロジェクト **`physics-gnn-surrogate-basic`** および **`physics-gnn-surrogate-act`** と揃えています（リポルートの `requirements.txt`、`python3 -m venv .venv` または `uv venv`、`julia --project=.` の `Pkg.instantiate()`、成果物は `data/interim/`、MIT License）。
+<a id="english"></a>
 
----
+## English
 
-## クイックスタート（クローン → データ生成 → 学習）
+### Overview
 
-以下は **Step 1（単一格子・波動）** をローカルで一通り動かす最小手順です。GPU がなくても `--cpu` で実行できます。
+This repository trains and evaluates **physics-informed graph surrogates** for discrete wave dynamics at scale, with emphasis on **stable long autoregressive rollouts**. Core goals:
 
-```bash
-# 1. リポジトリ取得
-git clone https://github.com/kohmaruworks/physics-gnn-surrogate-long-rollout.git
-cd physics-gnn-surrogate-long-rollout
+- **Time stabilization** — **Heun (improved Euler)** integration of the learned vector field \(f_\theta(h) \approx dh/dt\) *outside* the raw message-passing stack, plus an optional **symplectic / Hamiltonian penalty** to curb energy drift over many steps.
+- **Spatial scale-out** — **domain decomposition (DDM)** with **METIS** partitioning and **halo exchange** between subdomains each macro-step.
+- **Multigrid + tensor message passing** — structured **restriction / prolongation** (sparse COO generated in Julia, consumed in PyTorch) and **einsum-style** bond contraction for longer-range interactions on graphs.
 
-# 2. Julia：依存固定と参照軌道 JSON の生成
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
-julia --project=. data_generation/generate_wave_data.jl
+Reference trajectories and graph IR are produced in **Julia**; training, inference API, and evaluation run in **Python (PyTorch / PyTorch Geometric)**. The two sides are **loosely coupled through versioned JSON**, with **index semantics fixed at the boundary** so round-trips are safe and auditable.
 
-# 3. Python：仮想環境と依存
-python3 -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
-pip install -r requirements.txt
-
-# 4. 学習（既定で data/interim/wave_rollout_step1_model.pth に保存。.gitignore 対象）
-python surrogate_model/train.py --cpu   # GPU 利用時は --cpu を外す
-
-# 5. （任意）評価パイプラインは Step 4 の README 節を参照。
-#    Julia で generate_eval_data.jl を実行後、学習済みチェックポイントを指定して eval_pipeline.py を実行します。
-```
-
-CI（GitHub Actions）でも上記と同等の **Julia 生成 → インデックス変換スモーク → `train.py` 少量エポック** が自動実行されます。詳細は [.github/workflows/ci.yml](.github/workflows/ci.yml)。
-
----
-
-## OSS の設計思想（コントリビューションのガイド）
-
-第三者にも境界が伝わるよう、実装の前提を三つに絞っています。
-
-1. **言語間の境界と役割分担**  
-   **Julia**：参照物理シミュレーション・JSON IR の生成・メタデータ付きの計時。**Python（PyTorch / PyG）**：学習・推論・評価。**JSON スキーマ**で境界を固定し、再現性と差し替え容易性を優先します。
-2. **インデックスの安全保障**  
-   Julia は **1-based** の辺・行列インデックスをスキーマどおり JSON に書き、Python は **`convert_julia_to_python_indices`**（およびスパース COO 用変換）を**データロード経路で必ず通す**ことで、オフバイワン起因の「見えないバグ」を防ぎます。
-3. **モジュール性（応用圏論的アプローチ）**  
-   空間メッセージパッシング、時間積分（Heun）、Halo Exchange（DDM）、射影（Restriction / Prolongation）を **関手（Functor）として捉えうる独立コンポーネント**に分割し、**合成（composition）** でパイプラインを組み立てられるようにしています。別物理・別評価でも同じパターンを再利用しやすくします。
-
-バグ報告・機能提案・ドキュメント修正は歓迎です。大きな変更の前に Issue で方針を相談いただけるとスムーズです。
-
----
-
-## コアとなる物理法則と数式
-
-本リポジトリが対象とする離散波動系サロゲートでは、時間更新に **Heun 法**、学習に **離散ハミルトニアンに基づくシンプレクティック制約**、評価に **自己回帰ロールアウト RMSE** を用います。
-
-**Heun 法による時間積分**（中間状態 $\tilde{h}^{(t+1)}$ は実装で明示的に構成されます）
+**Heun update** (intermediate state \(\tilde{h}^{(t+1)}\) is formed explicitly in code):
 
 $$
 h^{(t+1)} = h^{(t)} + \frac{\Delta t}{2} \left( f_{\theta}(h^{(t)}) + f_{\theta}(\tilde{h}^{(t+1)}) \right)
 $$
 
-**Symplectic Loss（エネルギー保存に関するペナルティ項）**
+**Zero-shot autoregressive rollout RMSE** (used in the evaluation pipeline; \(\hat{u}\) prediction, \(u\) reference, \(V\) nodes, \(T\) steps):
 
 $$
-\mathcal{L}_{total} = \mathcal{L}_{data} + \lambda_{symp} \sum_{t} \left\| \mathcal{H}(h^{(t+1)}) - \mathcal{H}(h^{(t)}) \right\|^2
+\text{RMSE}_{rollout} = \sqrt{ \frac{1}{T \cdot |V|} \sum_{t=1}^{T} \sum_{i \in V} \left\| \hat{u}_i^{(t)} - u_i^{(t)} \right\|^2}
 $$
 
-**ゼロショット自己回帰ロールアウト誤差（評価パイプラインで使用）**  
-（$\hat{u}$：予測、$u$：参照、$V$：ノード集合）
+Related repos for smaller baselines: **[physics-gnn-surrogate-basic](https://github.com/kohmaruworks/physics-gnn-surrogate-basic)**, **[physics-gnn-surrogate-act](https://github.com/kohmaruworks/physics-gnn-surrogate-act)**.
 
-$$
-\text{RMSE}_{rollout} = \sqrt{ \frac{1}{T \cdot |V|} \sum_{t=1}^{T} \sum_{i \in V} \left\| \hat{u}_i^{(t)} - u_i^{(t)} \right\|^2 }
-$$
+### Architecture
 
----
+| Layer | Responsibility |
+| --- | --- |
+| **Julia** | Reference PDE / ODE integration, graph and multigrid metadata, JSON IR emission, optional wall-clock timing for ROI-style comparison. Vertex and edge indices follow **1-based** Julia conventions in emitted payloads **where the schema specifies it**. |
+| **Python** | Dataset load, **index conversion to 0-based PyG `edge_index`**, training (`train.py`, `train_ddm.py`, `train_step3.py`), **FastAPI** inference, and evaluation (`evaluation/eval_pipeline.py`). |
+| **JSON IR** | Single source of truth for topology, features, and optional sparse COO blocks; keeps Julia and Python **replaceable** behind a stable schema. |
 
-## プロジェクト構成
+**Index safety (1-based ↔ 0-based).** Julia stacks typically use **1-based** indexing; PyTorch Geometric expects **0-based** `edge_index`. This project **does not** hide that ambiguity in ad hoc math: **conversion is applied in the Python data-load path** via helpers such as `convert_julia_to_python_indices` (and sparse COO helpers where applicable), and the **HTTP API** documents a **1-based wire format** for edges while internally converting before `forward`. That yields a clear, testable **round-trip contract** at the API and loader layers—reducing off-by-one failures when mixing languages.
+
+Compositionality (*functor-style* building blocks): local message passing, Heun integration, halo sync (DDM), and restriction/prolongation are kept in **separate modules** so pipelines are assembled by **composition** rather than monolithic scripts.
+
+### Repository layout
 
 ```text
 physics-gnn-surrogate-long-rollout/
-├── .github/workflows/ci.yml       # GitHub Actions CI（Julia データ生成 → Python スモーク）
-├── data_generation/
-│   ├── generate_wave_data.jl       # Step 1: 単一領域グリッド波動
-│   ├── schema.json
-│   ├── generate_large_wave_data.jl # Step 2: Metis DDM + halo パッチ
-│   ├── schema_ddm.json
-│   ├── generate_multigrid_data.jl # Step 3: fine/coarse 2:1 + R,P COO
-│   ├── schema_multigrid.json
-│   ├── generate_eval_data.jl      # Step 4: ゼロショット評価用 IR + Julia 計時
-│   └── schema_eval.json
-├── evaluation/                     # Step 4: メトリクス・プロファイラ・統合パイプライン
-│   ├── metrics.py
-│   ├── profiler.py
-│   └── eval_pipeline.py
-├── reports/                       # Step 4 レポート（既定 .gitignore、.gitkeep のみ追跡）
-├── surrogate_model/
-│   ├── utils/
-│   │   ├── index_converter.py     # 1-based→0-based + DDM + sparse COO
-│   │   └── halo_sync.py
-│   ├── modules/
-│   │   ├── message_passing.py
-│   │   ├── integrator.py
-│   │   ├── physics_loss.py
-│   │   ├── ddm.py
-│   │   ├── multigrid.py           # Step 3: Restriction / Prolongation
-│   │   └── tensor_mp.py           # Step 3: TensorMessagePassing (einsum)
-│   ├── model.py
-│   ├── model_hierarchical.py      # Step 3: HierarchicalPhysicsGNN
-│   ├── train.py
-│   ├── train_ddm.py
-│   └── train_step3.py             # Step 3 学習
-├── data/interim/                # 生成 JSON・学習済み .pth（.gitignore、.gitkeep のみ追跡）
-├── Project.toml                 # Julia 依存（JSON3, DifferentialEquations, Metis）
-├── requirements.txt             # Python 依存（torch, torch-geometric, numpy）
-├── .gitignore
+├── .github/workflows/ci.yml
+├── api/                       # FastAPI inference service (Heun single-graph checkpoints)
+├── clients/julia/             # Julia HTTP client; run_e2e_test.jl
+├── data_generation/           # Julia IR generators + JSON schemas
+├── evaluation/                # Metrics, profiler, eval_pipeline.py
+├── surrogate_model/           # Model, training entry points, index_converter, DDM, multigrid, …
+├── data/interim/              # Generated JSON & checkpoints (.gitignore; .gitkeep tracked)
+├── Project.toml / Manifest.toml
+├── requirements.txt
 ├── LICENSE
 └── README.md
 ```
 
-### インデックス契約（関連ベースライン実装との差分）
+**Note:** sibling baseline **[physics-gnn-surrogate-basic](https://github.com/kohmaruworks/physics-gnn-surrogate-basic)** normalizes some edge endpoints to 0-based **in JSON at Julia export**; **this repo** may emit **1-based** endpoints per schema and normalize **in Python**—both styles share the same principle: **fix semantics at a documented boundary**.
 
-- **本リポジトリ**: Julia はスキーマどおり **辺端点を 1-based のまま JSON に書き出し**、Python 側で **`convert_julia_to_python_indices`** をデータロード時に必ず通します（仕様で明示）。
-- **`physics-gnn-surrogate-basic`**: IR 上はエクスポート時に 0-based に正規化する設計。どちらも「境界で意味を固定する」という方針は同じです。
+### Getting started
 
----
-
-## 環境構築
-
-### Julia（データ生成）
-
-Julia は **`Manifest.toml` に記載の `julia_version` と整合するバージョン**を推奨します（現状のロックファイルは **1.12** 系）。GitHub Actions の CI も同じマイナー系列で実行します。インストールは [juliaup](https://github.com/JuliaLang/juliaup) または公式バイナリ（補足ドキュメントが必要な場合は **`physics-gnn-surrogate-basic`** など姉妹リポジトリの `docs/` を参照）。
+**Julia** — use a Julia version consistent with `Manifest.toml` (CI uses the same minor series). [juliaup](https://github.com/JuliaLang/juliaup) or official binaries are fine.
 
 ```bash
+git clone https://github.com/kohmaruworks/physics-gnn-surrogate-long-rollout.git
 cd physics-gnn-surrogate-long-rollout
 julia --project=. -e 'using Pkg; Pkg.instantiate()'
-julia --project=. data_generation/generate_wave_data.jl
 ```
 
-ルートの `Project.toml` は **`physics-gnn-surrogate-basic` と同様、「環境」用**です（`name` / `uuid` を付けない）。付けると Julia がその名前の**パッケージ**として precompile し、`src/` が無い場合に「Missing source file」で失敗します。
+The root `Project.toml` is an **environment** only (no `name` / `uuid` package fields), matching the sister repos—otherwise Julia precompile can fail without a `src/` layout.
 
-出力: `data/interim/wave_rollout_step1.json`（スキーマ `physics_gnn_wave_rollout_step1_v1`）。
-
-### Python（学習）
+**Python**
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-# または: uv venv .venv && source .venv/bin/activate && uv pip install -r requirements.txt
-
-python surrogate_model/train.py
 ```
 
-主なオプション:
+For CUDA, install a matching **PyTorch** build first, then align **PyTorch Geometric** wheels with [official PyG instructions](https://pytorch-geometric.readthedocs.io/en/latest/install/installation.html).
 
-- `--epochs`, `--lr`, `--hidden`, `--layers`
-- `--lambda-symp`: エネルギー保存ペナルティの重み \(\lambda_{\mathrm{symp}}\)
-- `--rollout-min` / `--rollout-max`: エポックに応じて伸ばす **ロールアウト長（カリキュラム）**
-- `--val-split`: 末尾時刻を検証に回す割合（自己回帰ロールアウト MSE を表示）
-
-学習済み: `data/interim/wave_rollout_step1_model.pth`
-
----
-
-## ステップ 2: DDM（領域分割 + Halo Exchange）
-
-Julia で **Metis** により格子グラフを `K` 分割し、各パッチに **1-hop halo（ゴースト）** を付与した JSON（`physics_gnn_wave_rollout_ddm_v1`）を生成します。Python 側はサブドメイン単位でテンソルを保持し、**各グローバル時間ステップの Heun 後に `sync_halo_features`** で境界を同期します（`PhysicsGNNSurrogateDDM`）。`message_passing.py` / `integrator.py` 本体は変更しません。
-
-### Julia（DDM データ）
+**Minimal wave data + smoke training (single-domain Step 1)**
 
 ```bash
-julia --project=. -e 'using Pkg; Pkg.instantiate()'
-julia --project=. data_generation/generate_large_wave_data.jl
+julia --project=. data_generation/generate_wave_data.jl
+python surrogate_model/train.py --cpu    # omit --cpu if using GPU
 ```
 
-出力例: `data/interim/wave_rollout_ddm_v1.json`。スキーマは `data_generation/schema_ddm.json`。
+Artifacts default to `data/interim/` (gitignored except `.gitkeep`). CI runs an equivalent Julia generate → index smoke → short `train.py` path; see [`.github/workflows/ci.yml`](.github/workflows/ci.yml).
 
-### Python（DDM 学習）
+### Usage
 
-```bash
-python surrogate_model/train_ddm.py
-```
+#### Training and evaluation (summary)
 
-- **既定**: 各時間ウィンドウで **teacher-forced halo**（ゴースト行を全局 GT で上書き）によるサブドメイン損失を **`loss / K` に分解して backward** し、メモリ効率と勾配合算を両立（マイクロバッチは `--microbatch-subdomains`）。
-- **`--joint-ddm-loss`**: 結合 `rollout_ddm` を 1 回の backward で最適化（厳密だがメモリ負荷大）。
+| Track | Julia data | Python entry | Typical artifact |
+| --- | --- | --- | --- |
+| Single grid + Heun | `data_generation/generate_wave_data.jl` | `surrogate_model/train.py` | `data/interim/wave_rollout_step1.json`, `wave_rollout_step1_model.pth` |
+| DDM + halo | `data_generation/generate_large_wave_data.jl` | `surrogate_model/train_ddm.py` | `wave_rollout_ddm_v1.json`, `wave_rollout_ddm_model.pth` |
+| Multigrid + tensor MP | `data_generation/generate_multigrid_data.jl` | `surrogate_model/train_step3.py` | `multigrid_wave_v1.json`, `hierarchical_step3_model.pth` |
+| Zero-shot eval + ROI | `data_generation/generate_eval_data.jl` | `evaluation/eval_pipeline.py` | `eval_zero_shot_v1.json`, report under `reports/` (gitignored) |
 
-学習済み: `data/interim/wave_rollout_ddm_model.pth`
+Useful `train.py` flags include `--lambda-symp`, `--rollout-min` / `--rollout-max` (curriculum), and `--val-split`. DDM training supports `--microbatch-subdomains` and `--joint-ddm-loss`; see script headers for defaults.
 
----
-
-## ステップ 3: Multigrid + Tensor メッセージパッシング（長距離相互作用）
-
-Julia で **2:1 の構造化細／粗格子**、**全重量 Restriction `R`**（4 細頂点の平均）と **piecewise constant の Prolongation `P`** の COO を出力します（スキーマ `physics_gnn_multigrid_v1`）。Python は **`convert_julia_sparse_coo_to_torch`** で行列インデックスを一元変換し、`torch.sparse.mm` で \(h_c=R\,h_f\)、\(h_f \mathrel{+}= P\,F_{\mathrm{coarse}}(h_c)\) を合成します。局所層は **`TensorMessagePassing`**（`torch.einsum` によるボンド縮約）で、Heun / DDM とは別ファイルのため単体テスト・合成が容易です。
-
-### Julia（Multigrid データ）
-
-```bash
-julia --project=. data_generation/generate_multigrid_data.jl
-```
-
-出力例: `data/interim/multigrid_wave_v1.json`（`schema_multigrid.json`）。
-
-### Python（Step 3 学習）
-
-```bash
-python surrogate_model/train_step3.py
-```
-
-学習済み: `data/interim/hierarchical_step3_model.pth`
-
----
-
-## ステップ 4: ゼロショット評価と ROI（Julia ↔ Python / JSON）
-
-学習時と異なる格子・条件の **2D 波動** を Julia で解き、参照軌道と **Julia ソルバーの壁時計時間** を `schema_eval.json` 準拠の JSON に書き出します。Python はその IR を読み、`convert_julia_to_python_indices` / `convert_julia_sparse_coo_to_torch` を経由して学習済みモデルで **自己回帰ロールアウト** を行い、**累積 RMSE**・**エネルギー漂移**・**1 ステップ推論時間（CUDA Event 等）** を算出し、`julia_seconds_per_macro_step` から **Speedup（ROI）** を計算します。
-
-### Julia（評価用データ生成 + ベースライン計時）
-
-```bash
-julia --project=. data_generation/generate_eval_data.jl
-```
-
-既定出力: `data/interim/eval_zero_shot_v1.json`。メッシュサイズや出力パスはスクリプト先頭の定数で変更できます。
-
-### Python（評価パイプライン）
-
-リポジトリルートから:
+**Evaluation example** (repository root):
 
 ```bash
 python evaluation/eval_pipeline.py \
@@ -239,53 +118,225 @@ python evaluation/eval_pipeline.py \
   --checkpoint data/interim/hierarchical_step3_model.pth
 ```
 
-- **`--architecture auto|heun|hierarchical`**: `auto` はチェックポイントの `meta`（例: `bond` の有無）から階層か Heun かを推定します。
-- **`--cpu`**: GPU が無い環境や CPU 計測用。
-- **`--max-rollout-steps`**: 0 で評価 JSON の時系列長に合わせます。
-- **`--report-json`**: 既定は `reports/evaluation_results.json`。
+#### FastAPI inference server
 
-生成されるレポートには、`rollout_rmse`、`energy_drift_max_relative`、`gnn_seconds_per_step_mean`、`speedup_vs_julia_macro_step` などが JSON で記録されます。**`reports/` 配下の生成ファイルは `.gitignore`** され、`reports/.gitkeep` のみリポジトリに含めます。
+**Scope:** **single-graph `PhysicsGNNSurrogate` (Step 1 / Heun)** checkpoints. Hierarchical checkpoints with multigrid `meta` are **not** served by this API in the current version.
+
+**Index contract:** clients send **`edges` as 1-based `[src, dst]` pairs** (Julia-style). The server runs **`convert_julia_to_python_indices`** to build **0-based `edge_index`**, steps the model with Heun, and returns **`edges_julia`** as **1-based pairs** again for round-trip checks.
+
+From the repository root (after `pip install -r requirements.txt`):
+
+```bash
+source .venv/bin/activate
+export SURROGATE_CHECKPOINT=data/interim/wave_rollout_step1_model.pth
+export SURROGATE_DEVICE=cpu        # or cuda when available
+uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Open **`http://127.0.0.1:8000/docs`** for OpenAPI.
+
+**Health check and sample `curl`** (edges **1-based**):
+
+```bash
+curl -s http://127.0.0.1:8000/health
+
+curl -s http://127.0.0.1:8000/predict_step \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "num_nodes": 4,
+    "node_features": [[0.0, 0.0], [0.0, 0.0], [0.0, 0.0], [0.0, 0.0]],
+    "edges": [
+      [1, 2], [2, 1], [3, 4], [4, 3],
+      [1, 3], [3, 1], [2, 4], [4, 2]
+    ]
+  }'
+```
+
+#### Julia end-to-end API test
+
+With **`uvicorn` still running** in another terminal, from the repository root:
+
+```bash
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+julia --project=. clients/julia/run_e2e_test.jl
+```
+
+Defaults: `http://127.0.0.1:8000` and `data/interim/wave_rollout_step1.json`. Optional arguments:
+
+```bash
+julia --project=. clients/julia/run_e2e_test.jl http://127.0.0.1:9000
+julia --project=. clients/julia/run_e2e_test.jl http://127.0.0.1:8000 path/to/other.json
+```
+
+The client posts **the same 1-based edges and node order** as the IR; it does **not** apply ±1 locally—the server performs conversion.
+
+### Symplectic loss (training)
+
+$$
+\mathcal{L}_{total} = \mathcal{L}_{data} + \lambda_{symp} \sum_{t} \left\| \mathcal{H}(h^{(t+1)}) - \mathcal{H}(h^{(t)}) \right\|^2
+$$
+
+### Algorithms (short)
+
+- **Step 1:** Heun integration of \(f_\theta\), symplectic Hamiltonian penalty on discrete \(\mathcal{H}\), sliding-window supervised rollout.
+- **DDM:** METIS partitions, teacher-forced or joint halo losses; `sync_halo_features` after each Heun macro-step.
+- **Multigrid:** fine/coarse grids with sparse \(R\), \(P\); tensor message passing via `einsum`; composed inside `HierarchicalPhysicsGNN`.
+
+### Contributing
+
+Issues and PRs are welcome. For larger changes, please open an issue first. Large generated files under `data/interim/` and `reports/` remain **gitignored**; commit only reproducible scripts and manifests.
+
+### License
+
+This project is licensed under the **MIT License** — see the [`LICENSE`](LICENSE) file.
 
 ---
 
-## ステップ 5: OSS 公開・CI
+<a id="japanese"></a>
 
-### GitHub Actions（CI）
+## 日本語
 
-`main` / `master` への push と Pull Request で、Ubuntu 上で次を順に実行します。
+### プロジェクト概要
 
-1. Julia の `Pkg.instantiate()` と **`data_generation/generate_wave_data.jl`**（Step 1 の参照 JSON 生成）
-2. Python（CPU 版 PyTorch）のインストール
-3. **`convert_julia_to_python_indices` を用いたインデックス変換のスモーク検証**（インラインスクリプト）
-4. **`surrogate_model/train.py --epochs 2 --cpu`** によるスモーク学習
+離散波動系を対象に、**大規模マルチフィジックス**と**自己回帰ロールアウトの長期安定性**を両立する **物理情報付きグラフ GNN サロゲート** です。主な狙いは次のとおりです。
 
-ワークフロー定義: [`.github/workflows/ci.yml`](.github/workflows/ci.yml)
+- **時間方向** — 学習したベクトル場 \(f_\theta(h) \approx dh/dt\) に対し、メッセージパッシング本体とは切り離した **Heun 法（改良オイラー）** で更新し、必要に応じて **離散ハミルトニアンに基づく Symplectic 損失** で長期のエネルギー漂移を抑える。
+- **空間方向** — **METIS による領域分割（DDM）** と **Halo 同期** でサブドメイン並列・メモリ効率を改善。
+- **マルチグリッド** — Julia が出力する **Restriction / Prolongation の COO** と **テンソル型メッセージパッシング（einsum）** で長距離相関を扱いやすくする。
 
----
+参照軌道とグラフ IR は **Julia**、学習・推論 API・評価は **Python（PyTorch / PyG）**。**版付き JSON** で疎結合にし、**インデックス意味を境界で固定**して監査しやすくしています。
 
-## アルゴリズム概要
+**Heun 更新**（\(\tilde{h}^{(t+1)}\) は実装で明示的に構成）:
 
-### Step 3
+$$
+h^{(t+1)} = h^{(t)} + \frac{\Delta t}{2} \left( f_{\theta}(h^{(t)}) + f_{\theta}(\tilde{h}^{(t+1)}) \right)
+$$
 
-1. **階層 GNN**: 細格子でテンソル MP → \(h_c = R h_f\) → 粗格子でテンソル MP → \(h_f \mathrel{+}= P h_c\) → 線形デコード。
-2. **Tensor MP**: エッジごとに \(m_{ij}=\sum_{\alpha\beta} A_i^\alpha W_{\alpha\beta}(e_{ij}) B_j^\beta\) を `einsum` で評価し集約。
+**ゼロショット自己回帰ロールアウト RMSE**（\(\hat{u}\) 予測、\(u\) 参照、\(V\) 頂点集合、\(T\) ステップ）:
 
-### Step 1
+$$
+\text{RMSE}_{rollout} = \sqrt{ \frac{1}{T \cdot |V|} \sum_{t=1}^{T} \sum_{i \in V} \left\| \hat{u}_i^{(t)} - u_i^{(t)} \right\|^2}
+$$
 
-1. **Heun（2 次 RK）**: 潜在状態 \(h\) に対し GNN が \(f_\theta(h)\approx dh/dt\) を与え、ドキュメント記載の更新式で \(h^{t+1}\) を計算。
-2. **SymplecticLoss**: 離散ハミルトニアン \( \mathcal{H} \approx \mathrm{KE}(v) + \mathrm{PE}_{\mathrm{edges}}(u)\) を構成し、\(|\mathcal{H}^{t+1}-\mathcal{H}^t|^2\) を時間方向に集約（双方向辺を考慮して \(\lambda_{\mathrm{edges}}\) を較正）。
-3. **学習**: スライディングウィンドウで **教師ありロールアウト**（予測軌道と JSON の \(u,v\) の MSE）に **`lambda_symp` 倍のシンプレクティック損失** を加算。
+小規模ベースライン: **[physics-gnn-surrogate-basic](https://github.com/kohmaruworks/physics-gnn-surrogate-basic)**、拡張デモ: **[physics-gnn-surrogate-act](https://github.com/kohmaruworks/physics-gnn-surrogate-act)**。
 
----
+### アーキテクチャ担当分担
 
-## GitHub への push について
+| 層 | 役割 |
+| --- | --- |
+| **Julia** | 参照シミュレーション、グラフ／マルチグリッドメタデータ、JSON IR 出力、ROI 用の計時など。**スキーマ上 1-based の辺インデックス**を書き出す設計が含まれる。 |
+| **Python** | データロード、**0-based への変換（`convert_julia_to_python_indices` 等）**、学習（`train.py` / `train_ddm.py` / `train_step3.py`）、**FastAPI 推論**、`evaluation/eval_pipeline.py` による評価。 |
+| **JSON IR** | トポロジ・特徴・任意の疎 COO を単一の契約として固定し、Julia / Python を差し替え可能にする。 |
 
-- **`data/interim/*` は .gitignore**（巨大・再現可能な成果物のため）。サンプル JSON をリポジトリに含めたい場合は README にその旨を書き、`git add -f` 等で明示的に追加してください。
-- **`articles/` と `youtube_scripts/` は .gitignore** 済みです（連載・動画向けの下書きをローカルにだけ置く想定）。リモートには含まれません。
-- **`Manifest.toml`**: `julia --project=. -e 'using Pkg; Pkg.instantiate()'` で生成されます。**`physics-gnn-surrogate-basic` など姉妹環境と同様、依存固定のためリポジトリにコミットする運用**を推奨します。
+**インデックスの安全保障（1-based ↔ 0-based）。** Julia 慣習と PyG の **0-based `edge_index`** のギャップは、**Python のロード経路**と **HTTP API** で明示的に処理します。API ではクライアントが **1-based の辺**を送り、サーバーが **変換後に推論**し、応答で **再度 1-based に戻す** など、**ラウンドトリップが検証可能**な境界になっています。
 
----
+設計上、局所 MP、Heun、Halo、R/P は **独立モジュール**として合成可能です（応用圏論的「合成」を意識した構成）。
 
-## ライセンス
+### リポジトリ構成
 
-MIT License — 詳細は [LICENSE](LICENSE)。
+（英語セクションのツリーと同一）
+
+**注意:** **[physics-gnn-surrogate-basic](https://github.com/kohmaruworks/physics-gnn-surrogate-basic)** では Julia エクスポート時に 0-based に正規化する経路があり、**本リポジトリ**ではスキーマに応じ **1-based を JSON に載せ Python で正規化**する経路があります。いずれも **「文書化された境界で意味を固定する」** という方針は同じです。
+
+### 環境構築
+
+**Julia** — `Manifest.toml` と整合するバージョンを推奨（CI も同系）。
+
+```bash
+git clone https://github.com/kohmaruworks/physics-gnn-surrogate-long-rollout.git
+cd physics-gnn-surrogate-long-rollout
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+```
+
+ルートの `Project.toml` は **環境専用**（`name` / `uuid` なし）。パッケージ化すると `src/` 不在で precompile が失敗します。
+
+**Python**
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+**最小動作（単一領域・Heun）**
+
+```bash
+julia --project=. data_generation/generate_wave_data.jl
+python surrogate_model/train.py --cpu
+```
+
+成果物は既定で `data/interim/`（`.gitignore`、`.gitkeep` のみ追跡）。CI の流れは [`.github/workflows/ci.yml`](.github/workflows/ci.yml) を参照。
+
+### 使い方
+
+#### 学習・評価（要約）
+
+| トラック | Julia | Python | 成果物の例 |
+| --- | --- | --- | --- |
+| 単一格子 + Heun | `data_generation/generate_wave_data.jl` | `surrogate_model/train.py` | `wave_rollout_step1.json`, `wave_rollout_step1_model.pth` |
+| DDM + halo | `data_generation/generate_large_wave_data.jl` | `surrogate_model/train_ddm.py` | `wave_rollout_ddm_v1.json`, `wave_rollout_ddm_model.pth` |
+| マルチグリッド | `data_generation/generate_multigrid_data.jl` | `surrogate_model/train_step3.py` | `multigrid_wave_v1.json`, `hierarchical_step3_model.pth` |
+| ゼロショット評価 | `data_generation/generate_eval_data.jl` | `evaluation/eval_pipeline.py` | `eval_zero_shot_v1.json`, `reports/` 下（gitignore） |
+
+**評価例:**
+
+```bash
+python evaluation/eval_pipeline.py \
+  --eval-json data/interim/eval_zero_shot_v1.json \
+  --checkpoint data/interim/hierarchical_step3_model.pth
+```
+
+#### FastAPI 推論サーバー
+
+**対象:** **単一グラフ Heun（Step 1 系）チェックポイント**。マルチグリッド `meta` 付き階層モデルは **現行 API 非対応**。
+
+**インデックス契約:** リクエストの `edges` は **1-based**。サーバーが **`convert_julia_to_python_indices`** で **0-based `edge_index`** に変換して `forward`（Heun 1 ステップ）。応答の **`edges_julia`** は **再び 1-based**（ラウンドトリップ確認用）。
+
+```bash
+source .venv/bin/activate
+export SURROGATE_CHECKPOINT=data/interim/wave_rollout_step1_model.pth
+export SURROGATE_DEVICE=cpu
+uvicorn api.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+**OpenAPI:** `http://127.0.0.1:8000/docs`  
+
+**curl 例**（辺は **1-based**）は英語セクションと同じ。
+
+#### Julia による E2E テスト
+
+**別ターミナルで `uvicorn` を起動した状態**で、リポジトリルートから:
+
+```bash
+julia --project=. -e 'using Pkg; Pkg.instantiate()'
+julia --project=. clients/julia/run_e2e_test.jl
+```
+
+既定 URL は `http://127.0.0.1:8000`、入力 IR は `data/interim/wave_rollout_step1.json`。基底 URL や JSON を変える場合:
+
+```bash
+julia --project=. clients/julia/run_e2e_test.jl http://127.0.0.1:9000
+julia --project=. clients/julia/run_e2e_test.jl http://127.0.0.1:8000 path/to/other.json
+```
+
+クライアント側では **±1 操作は行わず**、サーバー側で変換します。
+
+### Symplectic 損失（学習）
+
+$$
+\mathcal{L}_{total} = \mathcal{L}_{data} + \lambda_{symp} \sum_{t} \left\| \mathcal{H}(h^{(t+1)}) - \mathcal{H}(h^{(t)}) \right\|^2
+$$
+
+### アルゴリズム（短く）
+
+- **Step 1:** Heun、シンプレクティック項、スライディングウィンドウ教師ありロールアウト。
+- **DDM:** METIS 分割、Halo 損失、`sync_halo_features`。
+- **マルチグリッド:** 疎 \(R,P\) とテンソル MP、`HierarchicalPhysicsGNN` に合成。
+
+### コントリビューション
+
+バグ報告・PR 歓迎。大きな変更は Issue で事前相談推奨。`data/interim/` や `reports/` の巨大生成物は **gitignore** されます。
+
+### ライセンス
+
+本プロジェクトは **MIT License** の下で公開されています。全文は [`LICENSE`](LICENSE) を参照してください。
