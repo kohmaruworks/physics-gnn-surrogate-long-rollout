@@ -45,6 +45,36 @@ Related repos for smaller baselines: **[physics-gnn-surrogate-basic](https://git
 
 **Index safety (1-based ↔ 0-based).** Julia stacks typically use **1-based** indexing; PyTorch Geometric expects **0-based** `edge_index`. This project **does not** hide that ambiguity in ad hoc math: **conversion is applied in the Python data-load path** via helpers such as `convert_julia_to_python_indices` (and sparse COO helpers where applicable), and the **HTTP API** documents a **1-based wire format** for edges while internally converting before `forward`. That yields a clear, testable **round-trip contract** at the API and loader layers—reducing off-by-one failures when mixing languages.
 
+#### Architecture diagram
+
+The diagram below is **language-neutral** (labels in English for tooling compatibility). **Julia** emits **versioned JSON**; **Python** consumes it for **offline training/evaluation** after converting to **0-based PyG indices**. The **FastAPI** service accepts **1-based** edges over HTTP, converts internally, runs **Heun + GNN**, and returns **1-based** `edges_julia` so clients (e.g. `clients/julia/run_e2e_test.jl`) never perform ad hoc ±1 fixes—**indexing is centralized at the Python boundary**.
+
+```mermaid
+flowchart TB
+  subgraph JL["Julia — reference sim & IR"]
+    DG["data_generation/*.jl"]
+    JFILE[("JSON IR on disk<br/>1-based edge endpoints<br/>(per schema)")]
+  end
+  subgraph PY_offline["Python — offline train / eval"]
+    L1["Load JSON"]
+    C1["convert_julia_to_python_indices"]
+    E0["edge_index 0-based (PyG)"]
+    TE["train.py / train_ddm.py / train_step3.py<br/>eval_pipeline.py"]
+  end
+  subgraph HTTP["FastAPI — inference"]
+    REQ["POST /predict_step<br/>edges: 1-based"]
+    C2["convert_julia_to_python_indices"]
+    FWD["GNN + Heun 1-step"]
+    RES["response edges_julia: 1-based"]
+  end
+  subgraph CLI["HTTP client"]
+    E2E["clients/julia/run_e2e_test.jl"]
+  end
+  DG --> JFILE
+  JFILE --> L1 --> C1 --> E0 --> TE
+  E2E --> REQ --> C2 --> FWD --> RES --> E2E
+```
+
 Compositionality (*functor-style* building blocks): local message passing, Heun integration, halo sync (DDM), and restriction/prolongation are kept in **separate modules** so pipelines are assembled by **composition** rather than monolithic scripts.
 
 ### Repository layout
@@ -229,6 +259,36 @@ $$
 | **JSON IR** | トポロジ・特徴・任意の疎 COO を単一の契約として固定し、Julia / Python を差し替え可能にする。 |
 
 **インデックスの安全保障（1-based ↔ 0-based）。** Julia 慣習と PyG の **0-based `edge_index`** のギャップは、**Python のロード経路**と **HTTP API** で明示的に処理します。API ではクライアントが **1-based の辺**を送り、サーバーが **変換後に推論**し、応答で **再度 1-based に戻す** など、**ラウンドトリップが検証可能**な境界になっています。
+
+#### アーキテクチャ図
+
+以下の図は **言語非依存**（Mermaid 互換のためラベルは英語）です。**Julia** が **版付き JSON** を出力し、**Python** が **オフライン学習・評価**の前に **0-based** に揃えます。**FastAPI** は HTTP で **1-based** の辺を受け取り、内部で変換して **Heun + GNN** を実行し、**1-based の `edges_julia`** を返します。`clients/julia/run_e2e_test.jl` などは **クライアント側で ±1 しない**設計で、**インデックス変換は Python 側（ローダまたは API）に集約**されます。
+
+```mermaid
+flowchart TB
+  subgraph JL["Julia — reference sim & IR"]
+    DG["data_generation/*.jl"]
+    JFILE[("JSON IR on disk<br/>1-based edge endpoints<br/>(per schema)")]
+  end
+  subgraph PY_offline["Python — offline train / eval"]
+    L1["Load JSON"]
+    C1["convert_julia_to_python_indices"]
+    E0["edge_index 0-based (PyG)"]
+    TE["train.py / train_ddm.py / train_step3.py<br/>eval_pipeline.py"]
+  end
+  subgraph HTTP["FastAPI — inference"]
+    REQ["POST /predict_step<br/>edges: 1-based"]
+    C2["convert_julia_to_python_indices"]
+    FWD["GNN + Heun 1-step"]
+    RES["response edges_julia: 1-based"]
+  end
+  subgraph CLI["HTTP client"]
+    E2E["clients/julia/run_e2e_test.jl"]
+  end
+  DG --> JFILE
+  JFILE --> L1 --> C1 --> E0 --> TE
+  E2E --> REQ --> C2 --> FWD --> RES --> E2E
+```
 
 設計上、局所 MP、Heun、Halo、R/P は **独立モジュール**として合成可能です（応用圏論的「合成」を意識した構成）。
 
